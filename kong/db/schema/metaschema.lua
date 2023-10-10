@@ -165,6 +165,7 @@ local field_schema = {
   { err = { type = "string" } },
   { encrypted = { type = "boolean" }, },
   { referenceable = { type = "boolean" }, },
+  { examples = { type = "array", elements = { type = "any" } }, 
   { json_schema = json_metaschema },
 }
 
