@@ -183,7 +183,7 @@ end
 local function new(self)
   -- Don't put this onto the top level of the file unless you're prepared for a surprise
   local Schema = require "kong.db.schema"
-  
+
   local ROTATION_MUTEX_OPTS = {
     name = "vault-rotation",
     exptime = ROTATION_INTERVAL * 1.5, -- just in case the lock is not properly released
@@ -759,29 +759,30 @@ local function new(self)
   -- @usage local value, err = get_from_vault(reference, strategy, config, cache_key, parsed_reference)
   local function get_from_vault(reference, strategy, config, cache_key, parsed_reference)
     local value, err, ttl = invoke_strategy(strategy, config, parsed_reference)
-    local cache_value, shdict_ttl
+    local shdict_value
     if value then
       -- adjust ttl to the minimum and maximum values configured
       ttl = adjust_ttl(ttl, config)
-      shdict_ttl = max(ttl + (config.resurrect_ttl or DAO_MAX_TTL), SECRETS_CACHE_MIN_TTL)
-      cache_value = value
+      ttl = max(ttl + (config.resurrect_ttl or DAO_MAX_TTL), SECRETS_CACHE_MIN_TTL)
+      shdict_value = value
 
     else
       -- negatively cached values will be rotated on each rotation interval
-      shdict_ttl = max(config.neg_ttl or 0, SECRETS_CACHE_MIN_TTL)
-      cache_value = NEGATIVELY_CACHED_VALUE
+      ttl = max(config.neg_ttl or 0, SECRETS_CACHE_MIN_TTL)
+      shdict_value = NEGATIVELY_CACHED_VALUE
     end
 
-    local ok, cache_err = SECRETS_CACHE:safe_set(cache_key, cache_value, shdict_ttl)
+    -- SHM is updated on positive and negative results
+    local ok, cache_err = SECRETS_CACHE:safe_set(cache_key, shdict_value, ttl)
     if not ok then
       return nil, cache_err
     end
 
     if not value then
-      LRU:delete(reference)
       return nil, fmt("could not get value from external vault (%s)", err)
     end
 
+    -- LRU is only updated on positive results
     LRU:set(reference, value, ttl)
 
     return value
@@ -806,8 +807,6 @@ local function new(self)
   -- @usage
   -- local value, err = get(reference, cache_only)
   local function get(reference, cache_only)
-    -- the LRU stale value is ignored as the resurrection logic
-    -- is deferred to the shared dictionary
     local value = LRU:get(reference)
     if value then
       return value
@@ -1105,7 +1104,7 @@ local function new(self)
       -- We cannot retry, so let's just call the callback and return
       return callback(options)
     end
-    
+
     local name = "vault.try:" .. calculate_hash(concat(references, "."))
     local old_updated_at = RETRY_LRU:get(name) or 0
 
