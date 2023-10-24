@@ -84,12 +84,14 @@ function _M.new(clustering)
   assert(type(clustering.conf) == "table",
          "kong.clustering did not provide configuration")
 
+  -- burda clients sanirim data plane'ler ama anlamadim burda ne yapitigini
   local self = {
+    -- clients bos bir table olarak, ve key'leri weak reference olarak olusturuluyor.
     clients = setmetatable({}, { __mode = "k", }),
     plugins_map = {},
     conf = clustering.conf,
   }
-
+  -- _MT =  { __index = _M, }
   return setmetatable(self, _MT)
 end
 
@@ -155,7 +157,8 @@ function _M:push_config()
     ngx_log(ngx_ERR, _log_prefix, "unable to export config from database: ", err)
     return
   end
-
+-- sanki pushlama islemi burada yapiliyor
+-- self.clients nerde provision ediliyor?
   local n = 0
   for _, queue in pairs(self.clients) do
     table_insert(queue, RECONFIGURE_TYPE)
